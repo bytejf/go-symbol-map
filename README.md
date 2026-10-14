@@ -18,13 +18,13 @@ mapped[0].head_lines  # (245, 268)
 
 ---
 
-## 为什么
+## 为什么需要这个
 
 知道「这个 diff 改了哪些行」很容易，知道「**这个改动落在哪个函数里**」不容易 ——
 而后者才是大多数下游用途真正需要的：覆盖面报告要按函数聚合、审查意见要挂在函数上、
-变更影响分析要从函数出发、按函数拆 CI 缓存要按函数切。
+变更影响分析要从函数出发、CI 缓存要按函数切分。
 
-朴素做法是拿行号区间去和函数区间求交，但 Diff 的世界里有四个坑：
+朴素做法是拿行号区间去和函数区间求交，但 diff 的世界里有四处容易做错：
 
 **1. 一个 hunk 常常横跨好几个符号。** 新增一个大段、或者两个相邻函数同时被改，
 git 会把它合成一个 hunk。不切开就没法说它「属于谁」。
@@ -36,7 +36,7 @@ git 会把它合成一个 hunk。不切开就没法说它「属于谁」。
 （那个函数现在叫什么、还在不在）又必须换算回新版本。
 
 **4. 注释在语法树里不属于任何符号。** 文档注释、行尾注释、license 头各有各的归属
-规则，弄错一个就会让整段代码的归属凭空消失。
+规则，错一处就会让整段代码的归属消失。
 
 `go-symbol-map` 把这四件事都处理掉，并且保证一个结构性质：
 **返回的每一片都恰好归属一个符号** —— 不存在「一片挂着一串符号」或「没有符号」
@@ -119,11 +119,19 @@ mapped = map_hunks([diff], new_source=read_head, old_source=read_base)
 ```python
 from go_symbol_map import extract_symbols
 
+source = """package main
+
+func Load(path string) error {
+\treturn nil
+}
+"""
 for symbol in extract_symbols(source):
     print(symbol.name, symbol.kind, symbol.start_line, symbol.end_line)
 # package package 1 1
-# (*Service).Run method 5 9
+# Load function 3 5
 ```
+
+`kind` 与 `start_line` / `end_line` 都是**从 1 开始、闭区间**，行号是该源码文件里的坐标。
 
 ### 结果怎么读
 
@@ -168,7 +176,7 @@ for item in mapped:
 **5. `.go` 文件解析不出符号时丢弃，非 `.go` 合成整文件符号。**
 `.go` 解析不出符号是「**路径对不上**」的信号（文件改名后仍拿新路径查旧版符号表），
 无条件合成符号会把这条诊断静默抹掉。而 `go.mod` 这类文件没有 Go 符号可归，
-不给符号就会被当成「查不到符号表」丢掉 —— 那属于「结构上压根处理不到」。
+不给符号就会被当成「查不到符号表」丢掉 —— 那属于「结构上无法处理」。
 
 ## 边界
 
